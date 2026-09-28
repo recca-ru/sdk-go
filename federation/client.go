@@ -9,12 +9,13 @@ import (
 
 	"go.recca.ru/sdk/federationtypes"
 	"go.recca.ru/sdk/internal/transport"
+	"go.recca.ru/sdk/internal/version"
 )
 
 // Version — версия SDK. Уходит в User-Agent: по нему в журналах Recca видно,
 // какая версия клиента ходит, и это единственный способ узнать это без вопроса
 // интегратору.
-const Version = "0.2.0-dev"
+const Version = version.SDK
 
 // userAgentPrefix — имя клиента в User-Agent.
 const userAgentPrefix = "recca-federation-go/"
