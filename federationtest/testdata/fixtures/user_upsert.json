@@ -1,0 +1,10 @@
+{
+  "tenant_recca_id": "trid_conformance_01",
+  "is_new": true,
+  "claim_required": false,
+  "profile": {
+    "name": "Пётр Конформанс",
+    "avatar_url": "https://cdn.recca.ru/avatars/conformance.png",
+    "screen_name": "petr.conformance"
+  }
+}

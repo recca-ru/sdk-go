@@ -1,0 +1,16 @@
+{
+  "conversion_id": "conv_01",
+  "idempotent": false,
+  "attribution_source": "federation_tree",
+  "bonus_amount_rub": 500,
+  "bonus_transaction_id": "btx_01",
+  "partner_user_id": "trid_conformance_01",
+  "cascade_amount_rub": 750,
+  "cascade_legs_count": 2,
+  "legs": [
+    { "level": 1, "recipient_user_id": "trid_conformance_01", "amount_rub": 500, "bonus_transaction_id": "btx_01" },
+    { "level": 2, "recipient_user_id": "trid_upline_01", "amount_rub": 250, "bonus_transaction_id": "btx_02" }
+  ],
+  "redemption_id": "",
+  "program_id": ""
+}

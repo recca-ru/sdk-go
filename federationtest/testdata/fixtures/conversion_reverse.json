@@ -1,0 +1,12 @@
+{
+  "conversion_id": "conv_01",
+  "status": "partial_reversed",
+  "reversed_amount_rub": 500,
+  "legs": [
+    { "level": 1, "recipient_user_id": "trid_conformance_01", "reversed_amount_rub": 500, "reversal_transaction_id": "btx_rev_01", "unreversed_reason": "" }
+  ],
+  "unreversed_legs": [
+    { "level": 2, "recipient_user_id": "trid_upline_01", "reversed_amount_rub": 0, "reversal_transaction_id": null, "unreversed_reason": "ALREADY_PAID" }
+  ],
+  "idempotent": false
+}

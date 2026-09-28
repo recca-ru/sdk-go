@@ -1,0 +1,158 @@
+{
+  "generated_from": "apps/backend/src/utils/federation-error-codes.ts",
+  "note": "Коды дверей /federation/v1/* БЕЗ cpa/. Полноту и совпадение статусов держит guard:federation-error-registry в обе стороны. Кода MALFORMED_RESPONSE тут нет и быть не может: его ставит сам клиент, когда дверь ответила 2xx с success:false. ⚠ NOT_A_MEMBER и USER_NOT_MEMBER_OF_TENANT означают ОДНО И ТО ЖЕ и живут на разных дверях — ветвиться нужно по обоим. ⚠ CONFLICT приезжает только с дверей бейджей и выведен из ТЕКСТА сообщения, то есть устойчивым не является.",
+  "codes": [
+    {
+      "code": "MISSING_TENANT_KEY",
+      "http": 401
+    },
+    {
+      "code": "INVALID_TENANT_KEY",
+      "http": 401
+    },
+    {
+      "code": "MISSING_TENANT_SCOPE",
+      "http": 401
+    },
+    {
+      "code": "INSUFFICIENT_SCOPE",
+      "http": 403
+    },
+    {
+      "code": "IP_NOT_ALLOWED",
+      "http": 403
+    },
+    {
+      "code": "RATE_LIMIT_EXCEEDED",
+      "http": 429
+    },
+    {
+      "code": "UNAUTHORIZED",
+      "http": 401
+    },
+    {
+      "code": "INTERNAL_ERROR",
+      "http": 500
+    },
+    {
+      "code": "INVALID_INPUT",
+      "http": 400
+    },
+    {
+      "code": "VALIDATION_ERROR",
+      "http": 400
+    },
+    {
+      "code": "INVALID_TEMPLATE",
+      "http": 400
+    },
+    {
+      "code": "RESERVED_EXTERNAL_ID",
+      "http": 400
+    },
+    {
+      "code": "NOT_A_MEMBER",
+      "http": 403
+    },
+    {
+      "code": "USER_NOT_MEMBER_OF_TENANT",
+      "http": 403
+    },
+    {
+      "code": "MISSING_TOKEN",
+      "http": 401
+    },
+    {
+      "code": "INVALID_TOKEN",
+      "http": 401
+    },
+    {
+      "code": "GRANT_REVOKED",
+      "http": 401
+    },
+    {
+      "code": "NOT_FOUND",
+      "http": 404
+    },
+    {
+      "code": "OFFER_NOT_FOUND",
+      "http": 404
+    },
+    {
+      "code": "PROGRAM_NOT_FOUND",
+      "http": 404
+    },
+    {
+      "code": "NO_ELIGIBLE_PROGRAM",
+      "http": 404
+    },
+    {
+      "code": "PROGRAM_INACTIVE",
+      "http": 409
+    },
+    {
+      "code": "CODE_ISSUED_BY_OWNER",
+      "http": 403
+    },
+    {
+      "code": "CODE_NOT_AVAILABLE_YET",
+      "http": 403
+    },
+    {
+      "code": "CONFLICT",
+      "http": 409
+    },
+    {
+      "code": "INVALID_SIGNED_REF",
+      "http": 400
+    },
+    {
+      "code": "TENANT_MISMATCH",
+      "http": 403
+    },
+    {
+      "code": "BADGE_NOT_ACTIVE",
+      "http": 403
+    },
+    {
+      "code": "INVALID_COMMISSION_CONFIG",
+      "http": 400
+    },
+    {
+      "code": "RATE_UNKNOWN",
+      "http": 500
+    },
+    {
+      "code": "CASCADE_NOT_AVAILABLE",
+      "http": 403
+    },
+    {
+      "code": "CASCADE_FAILED",
+      "http": 500
+    },
+    {
+      "code": "CONVERSION_NOT_FOUND",
+      "http": 404
+    },
+    {
+      "code": "NOT_REVERSIBLE",
+      "http": 409
+    },
+    {
+      "code": "AMOUNT_EXCEEDS_ORIGINAL",
+      "http": 400
+    },
+    {
+      "code": "REVERSAL_FAILED",
+      "http": 500
+    },
+    {
+      "code": "EMAIL_BELONGS_TO_DIFFERENT_USER",
+      "http": 409
+    },
+    {
+      "code": "PHONE_BELONGS_TO_DIFFERENT_USER",
+      "http": 409
+    }
+  ]
+}

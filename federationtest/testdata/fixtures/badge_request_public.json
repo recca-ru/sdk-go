@@ -1,0 +1,19 @@
+{
+  "badge": {
+    "id": "badge_01",
+    "organization_id": "org_conformance",
+    "user_id": "trid_conformance_01",
+    "partnership_id": null,
+    "role_label": "Амбассадор",
+    "status": "accepted",
+    "tenant_visibility": "public",
+    "user_visibility": "tenant_only",
+    "effective_visibility": "tenant_only",
+    "issued_at": "2026-02-01T00:00:00.000Z",
+    "accepted_at": "2026-02-02T00:00:00.000Z",
+    "revoked_at": null,
+    "revoked_by": null,
+    "metadata": null
+  },
+  "requested": true
+}

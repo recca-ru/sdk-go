@@ -1,0 +1,32 @@
+{
+  "root": { "tenant_recca_id": "trid_conformance_01", "display_name": "Пётр" },
+  "levels": [
+    {
+      "depth": 1,
+      "nodes": [
+        {
+          "tenant_recca_id": "trid_direct_01",
+          "display_name": "Анна",
+          "joined_at": "2026-02-01T00:00:00.000Z",
+          "revoked": false
+        }
+      ],
+      "truncated": false
+    },
+    {
+      "depth": 2,
+      "nodes": [
+        {
+          "hashed_user_id": "9f2a1c4e8b7d6503aa11bb22cc33dd44ee55ff6677889900aabbccddeeff0011",
+          "display_name": "Скрытый партнёр",
+          "joined_at": "2026-02-10T00:00:00.000Z",
+          "revoked": false
+        }
+      ],
+      "truncated": false
+    }
+  ],
+  "total_downline": 2,
+  "hit_depth_cap": false,
+  "depth_used": 2
+}

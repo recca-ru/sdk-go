@@ -1,0 +1,19 @@
+{
+  "organization": {
+    "id": "org_conformance",
+    "slug": "conformance",
+    "display_name": "Приёмочная сеть",
+    "plan_tier": "business",
+    "allowed_origins": ["https://example.ru"]
+  },
+  "key": {
+    "prefix": "rtk_test_fed",
+    "scopes": [
+      "users:upsert", "users:read", "users:impersonate", "profile:read",
+      "offers:read", "leads:write", "conversions:write", "conversions:reverse",
+      "bonuses:read", "badges:write"
+    ]
+  },
+  "visibility": { "shop_count": 1 },
+  "environment": "sandbox"
+}

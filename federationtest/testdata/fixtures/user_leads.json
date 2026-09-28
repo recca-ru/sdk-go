@@ -1,0 +1,26 @@
+{
+  "leads": [
+    {
+      "id": "lead_01",
+      "organization_id": "org_conformance",
+      "referrer_id": "trid_conformance_01",
+      "offer_id": "offer_01",
+      "external_id": "form-2026-0001",
+      "type": "federation",
+      "status": "new",
+      "metadata": { "page_url": "https://example.ru/lp" },
+      "created_at": "2026-03-05T09:00:00.000Z"
+    },
+    {
+      "id": "lead_02",
+      "organization_id": "org_conformance",
+      "referrer_id": "trid_conformance_01",
+      "offer_id": "offer_01",
+      "external_id": "form-2026-0002",
+      "type": "federation",
+      "status": "approved",
+      "metadata": null,
+      "created_at": "2026-03-06T09:00:00.000Z"
+    }
+  ]
+}

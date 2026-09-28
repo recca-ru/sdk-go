@@ -1,0 +1,14 @@
+{
+  "currency_breakdown": [
+    {
+      "currency": "RUB",
+      "accrued": 1500,
+      "reversed": 300,
+      "available": 1200,
+      "wallet_cleared": 900,
+      "wallet_pending": 400
+    }
+  ],
+  "total_available_rub": 1200,
+  "total_wallet_cleared_rub": 900
+}

@@ -1,0 +1,58 @@
+{
+  "contract_version": "2026-09-24",
+  "generated_by": "apps/backend/src/scripts/cpa-api-vectors.ts",
+  "note": "Golden-векторы подписи ИСХОДЯЩИХ вебхуков Recca. Подпись считается над строкой `${timestamp}.${raw_body}`; проверять её нужно по СЫРОМУ телу запроса, а не по пересобранному JSON. Конверт — общий для всех событий платформы: тип события в `event_type`, полезная нагрузка в `data`, время события в `occurred_at`, время доставки в `delivered_at`. Случаи `cpa.*` и случаи федерации (`lead.created`, `conversion.cascaded`) лежат вместе намеренно — доставщик у них один. ⚠ Случай `federation_replay_same_event_id` несёт ЗАКОННУЮ подпись и то же `event_id`, что и предыдущий: проверка подписи повтор доставки не ловит и ловить не должна, его ловит дедупликация по `event_id`.",
+  "secret": "whsec_00000000000000000000000000000751",
+  "header_name": "X-Recca-Signature",
+  "tolerance_sec": 300,
+  "cases": [
+    {
+      "name": "conversion_approved",
+      "what": "Холд истёк, конверсия подтверждена. Без вебхука клиент узнавал бы об этом только опросом: переход делает наша джоба по расписанию, а не его запрос.",
+      "timestamp": 1789948800,
+      "raw_body": "{\"event_id\":\"fwd_01K5WV0751CPATESTKEY000001\",\"event_type\":\"cpa.conversion.approved\",\"event_version\":\"1\",\"organization_id\":\"org_01K5WV0751CPATESTKEY00001\",\"occurred_at\":\"2026-09-21T00:00:00.000Z\",\"delivered_at\":\"2026-09-21T00:00:30.000Z\",\"data\":{\"external_id\":\"order-0751\",\"goal\":\"1\",\"payout_rub\":500,\"status\":\"approved\",\"partner_external_id\":\"blogger-42\"}}",
+      "header": "t=1789948800,v1=7a636bf14ac6ef2efb50f69607389a063729adf5861adeab1a8f5fcd99f19e82",
+      "tampered_header": "t=1789948800,v1=7a636bf14ac6ef2efb50f69607389a063729adf5861adeab1a8f5fcd99f19e80"
+    },
+    {
+      "name": "payout_paid",
+      "what": "Выплата отмечена оплаченной оператором в кабинете.",
+      "timestamp": 1789948800,
+      "raw_body": "{\"event_id\":\"fwd_01K5WV0751CPATESTKEY000002\",\"event_type\":\"cpa.payout.paid\",\"event_version\":\"1\",\"organization_id\":\"org_01K5WV0751CPATESTKEY00001\",\"occurred_at\":\"2026-09-21T00:00:00.000Z\",\"delivered_at\":\"2026-09-21T00:00:30.000Z\",\"data\":{\"payout_id\":\"cpareq_9f2c41ab77e3d5061b8c4a72\",\"amount_rub\":4200,\"partner_external_id\":\"blogger-42\",\"paid_at\":\"2026-09-21T00:00:00.000Z\"}}",
+      "header": "t=1789948800,v1=660d746b5f5cdf1b56de970c1927cc97cef8c392496650f3548d537c4c7ff17c",
+      "tampered_header": "t=1789948800,v1=660d746b5f5cdf1b56de970c1927cc97cef8c392496650f3548d537c4c7ff170"
+    },
+    {
+      "name": "raw_body_signed_verbatim",
+      "what": "⚠⚠ Тело подписывается ПОБАЙТОВО. Здесь оно намеренно не в канонической форме (лишние пробелы, кириллица): клиент, который распарсит JSON и пересоберёт его перед проверкой, подпись не сойдёт — и это будет выглядеть как «у Recca сломалась подпись».",
+      "timestamp": 1789948800,
+      "raw_body": "{\"event_type\": \"cpa.conversion.approved\",  \"data\": {\"note\": \"оффер «Тест»\"}}",
+      "header": "t=1789948800,v1=583fcd4c29f1719130bf5be82bdd1e8fb31347aa32e2238ebd19338413f786ab",
+      "tampered_header": "t=1789948800,v1=583fcd4c29f1719130bf5be82bdd1e8fb31347aa32e2238ebd19338413f786a0"
+    },
+    {
+      "name": "federation_lead_created",
+      "what": "Заявка засчитана приведшему. Событие федерации, не CPA: конверт тот же самый, различается только `event_type` и состав `data`.",
+      "timestamp": 1789948800,
+      "raw_body": "{\"event_id\":\"fwd_01K5WV0804FEDTESTKEY000001\",\"event_type\":\"lead.created\",\"event_version\":\"1\",\"organization_id\":\"org_01K5WV0751CPATESTKEY00001\",\"occurred_at\":\"2026-09-28T00:00:00.000Z\",\"delivered_at\":\"2026-09-28T00:00:30.000Z\",\"data\":{\"lead_id\":\"lead_01K5WV0804FEDTEST0001\",\"external_id\":\"form-2026-0001\",\"referrer_user_id\":\"usr_01K5WV0804FEDTEST0002\",\"offer_id\":\"off_01K5WV0804FEDTEST0003\",\"status\":\"new\"}}",
+      "header": "t=1789948800,v1=17eaab74234043c32877b3fc83d1d93ab9aecf3973b477ddac564a637b171f55",
+      "tampered_header": "t=1789948800,v1=17eaab74234043c32877b3fc83d1d93ab9aecf3973b477ddac564a637b171f50"
+    },
+    {
+      "name": "federation_conversion_cascaded",
+      "what": "Каскад оплачен. ⚠ `legs` — массив: клиент, ожидающий одну ногу, потеряет остальные колена молча.",
+      "timestamp": 1789948800,
+      "raw_body": "{\"event_id\":\"fwd_01K5WV0804FEDTESTKEY000002\",\"event_type\":\"conversion.cascaded\",\"event_version\":\"1\",\"organization_id\":\"org_01K5WV0751CPATESTKEY00001\",\"occurred_at\":\"2026-09-28T00:00:00.000Z\",\"delivered_at\":\"2026-09-28T00:00:30.000Z\",\"data\":{\"conversion_id\":\"fconv_01K5WV0804FEDTEST0004\",\"external_id\":\"order-2026-0001\",\"amount_rub\":5000,\"cascade_amount_rub\":750,\"cascade_legs_count\":2,\"legs\":[{\"level\":1,\"recipient_user_id\":\"usr_01K5WV0804FEDTEST0002\",\"amount_rub\":500},{\"level\":2,\"recipient_user_id\":\"usr_01K5WV0804FEDTEST0005\",\"amount_rub\":250}]}}",
+      "header": "t=1789948800,v1=dd21b1db0f543a542420afb997cf860cd41c60930ae37a09367e74a1d693246b",
+      "tampered_header": "t=1789948800,v1=dd21b1db0f543a542420afb997cf860cd41c60930ae37a09367e74a1d6932460"
+    },
+    {
+      "name": "federation_replay_same_event_id",
+      "what": "⚠⚠ ПОВТОР ДОСТАВКИ: то же `event_id`, тот же конверт, СВЕЖАЯ метка времени и, значит, ЗАКОННАЯ подпись. Проверка подписи такой повтор пропускает — и обязана пропускать. Защищает от второй обработки только дедупликация по `event_id`; клиент, у которого её нет, начислит дважды, и ни один вектор подписи этого не покажет.",
+      "timestamp": 1789953300,
+      "raw_body": "{\"event_id\":\"fwd_01K5WV0804FEDTESTKEY000002\",\"event_type\":\"conversion.cascaded\",\"event_version\":\"1\",\"organization_id\":\"org_01K5WV0751CPATESTKEY00001\",\"occurred_at\":\"2026-09-28T00:00:00.000Z\",\"delivered_at\":\"2026-09-28T01:15:00.000Z\",\"data\":{\"conversion_id\":\"fconv_01K5WV0804FEDTEST0004\",\"external_id\":\"order-2026-0001\",\"amount_rub\":5000,\"cascade_amount_rub\":750,\"cascade_legs_count\":2,\"legs\":[{\"level\":1,\"recipient_user_id\":\"usr_01K5WV0804FEDTEST0002\",\"amount_rub\":500},{\"level\":2,\"recipient_user_id\":\"usr_01K5WV0804FEDTEST0005\",\"amount_rub\":250}]}}",
+      "header": "t=1789953300,v1=aff6d13f1ff884526e4db62fb2e7adce9f8ff02ae9fe36f4d7206a5553b0a3a3",
+      "tampered_header": "t=1789953300,v1=aff6d13f1ff884526e4db62fb2e7adce9f8ff02ae9fe36f4d7206a5553b0a3a0"
+    }
+  ]
+}
