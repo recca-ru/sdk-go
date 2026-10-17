@@ -18,4 +18,4 @@
 package version
 
 // SDK — версия модуля go.recca.ru/sdk.
-const SDK = "0.4.0"
+const SDK = "0.4.1"
