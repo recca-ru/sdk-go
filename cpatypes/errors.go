@@ -71,14 +71,16 @@ const (
 	CodePayoutNotFound     ErrorCode = "PAYOUT_NOT_FOUND"
 
 	// ── денежные отказы ──────────────────────────────────────────────────
-	CodeUnknownGoal         ErrorCode = "UNKNOWN_GOAL"
-	CodeWindowExpired       ErrorCode = "WINDOW_EXPIRED"
-	CodeAlreadyConverted    ErrorCode = "ALREADY_CONVERTED"
-	CodeExternalIDConflict  ErrorCode = "EXTERNAL_ID_CONFLICT"
-	CodeIllegalTransition   ErrorCode = "ILLEGAL_TRANSITION"
-	CodeIdempotentMismatch  ErrorCode = "IDEMPOTENT_MISMATCH"
-	CodeBelowMinPayout      ErrorCode = "BELOW_MIN_PAYOUT"
-	CodeInsufficientBalance ErrorCode = "INSUFFICIENT_BALANCE"
+	CodeUnknownGoal           ErrorCode = "UNKNOWN_GOAL"
+	CodeGoalDisabled          ErrorCode = "GOAL_DISABLED"
+	CodeWindowExpired         ErrorCode = "WINDOW_EXPIRED"
+	CodeOccurredAtOutOfWindow ErrorCode = "OCCURRED_AT_OUT_OF_WINDOW"
+	CodeAlreadyConverted      ErrorCode = "ALREADY_CONVERTED"
+	CodeExternalIDConflict    ErrorCode = "EXTERNAL_ID_CONFLICT"
+	CodeIllegalTransition     ErrorCode = "ILLEGAL_TRANSITION"
+	CodeIdempotentMismatch    ErrorCode = "IDEMPOTENT_MISMATCH"
+	CodeBelowMinPayout        ErrorCode = "BELOW_MIN_PAYOUT"
+	CodeInsufficientBalance   ErrorCode = "INSUFFICIENT_BALANCE"
 )
 
 // Сентинелы общей рамы — те же значения, что в reccatypes. Переобъявлять их
@@ -109,14 +111,16 @@ var (
 	ErrAdvertiserNotFound = errors.New("cpa: рекламодателя с таким advertiser_id в сети нет")
 	ErrPayoutNotFound     = errors.New("cpa: заявки на выплату с таким идентификатором нет")
 
-	ErrUnknownGoal         = errors.New("cpa: у оффера нет такой цели")
-	ErrWindowExpired       = errors.New("cpa: окно атрибуции оффера истекло")
-	ErrAlreadyConverted    = errors.New("cpa: по этому переходу уже засчитана конверсия на ту же цель")
-	ErrExternalIDConflict  = errors.New("cpa: external_id занят в сети другим оффером по той же цели")
-	ErrIllegalTransition   = errors.New("cpa: такой переход статуса невозможен")
-	ErrIdempotentMismatch  = errors.New("cpa: операция с этим ключом идемпотентности была с другими параметрами")
-	ErrBelowMinPayout      = errors.New("cpa: сумма меньше минимальной выплаты сети")
-	ErrInsufficientBalance = errors.New("cpa: доступного остатка партнёра не хватает")
+	ErrUnknownGoal           = errors.New("cpa: у оффера нет такой цели")
+	ErrGoalDisabled          = errors.New("cpa: цель выключена оператором сети — новые конверсии по ней не принимаются")
+	ErrWindowExpired         = errors.New("cpa: окно атрибуции оффера истекло")
+	ErrOccurredAtOutOfWindow = errors.New("cpa: время события вне окна приёма — конверсии принимаются не глубже 90 дней")
+	ErrAlreadyConverted      = errors.New("cpa: по этому переходу уже засчитана конверсия на ту же цель")
+	ErrExternalIDConflict    = errors.New("cpa: external_id занят в сети другим оффером по той же цели")
+	ErrIllegalTransition     = errors.New("cpa: такой переход статуса невозможен")
+	ErrIdempotentMismatch    = errors.New("cpa: операция с этим ключом идемпотентности была с другими параметрами")
+	ErrBelowMinPayout        = errors.New("cpa: сумма меньше минимальной выплаты сети")
+	ErrInsufficientBalance   = errors.New("cpa: доступного остатка партнёра не хватает")
 )
 
 // surface — приставка в тексте ошибок этой двери и признак отбора в реестре.
@@ -149,14 +153,16 @@ func init() {
 		CodeAdvertiserNotFound: info(http.StatusNotFound, ErrAdvertiserNotFound, false),
 		CodePayoutNotFound:     info(http.StatusNotFound, ErrPayoutNotFound, false),
 
-		CodeUnknownGoal:         info(http.StatusBadRequest, ErrUnknownGoal, false),
-		CodeWindowExpired:       info(http.StatusConflict, ErrWindowExpired, false),
-		CodeAlreadyConverted:    info(http.StatusConflict, ErrAlreadyConverted, false),
-		CodeExternalIDConflict:  info(http.StatusConflict, ErrExternalIDConflict, false),
-		CodeIllegalTransition:   info(http.StatusConflict, ErrIllegalTransition, false),
-		CodeIdempotentMismatch:  info(http.StatusConflict, ErrIdempotentMismatch, false),
-		CodeBelowMinPayout:      info(http.StatusBadRequest, ErrBelowMinPayout, false),
-		CodeInsufficientBalance: info(http.StatusConflict, ErrInsufficientBalance, false),
+		CodeUnknownGoal:           info(http.StatusBadRequest, ErrUnknownGoal, false),
+		CodeGoalDisabled:          info(http.StatusConflict, ErrGoalDisabled, false),
+		CodeWindowExpired:         info(http.StatusConflict, ErrWindowExpired, false),
+		CodeOccurredAtOutOfWindow: info(http.StatusBadRequest, ErrOccurredAtOutOfWindow, false),
+		CodeAlreadyConverted:      info(http.StatusConflict, ErrAlreadyConverted, false),
+		CodeExternalIDConflict:    info(http.StatusConflict, ErrExternalIDConflict, false),
+		CodeIllegalTransition:     info(http.StatusConflict, ErrIllegalTransition, false),
+		CodeIdempotentMismatch:    info(http.StatusConflict, ErrIdempotentMismatch, false),
+		CodeBelowMinPayout:        info(http.StatusBadRequest, ErrBelowMinPayout, false),
+		CodeInsufficientBalance:   info(http.StatusConflict, ErrInsufficientBalance, false),
 	})
 }
 

@@ -69,7 +69,7 @@ func ExampleSelfService_Get() {
 
 	// Output:
 	// среда: sandbox
-	// контракт: 2026-09-24
+	// контракт: 2026-10-02
 	// бюджет в минуту: 3000
 	// нога рекрутёра считается от: margin
 }
@@ -222,8 +222,8 @@ func ExampleClicksService_Create() {
 	}
 
 	// Output:
-	// клик: clk_a91a75a6ba175cbb
-	// вести на: https://adv.example/course?c=clk_a91a75a6ba175cbb
+	// клик: clk_cpatest_1
+	// вести на: https://adv.example/course?c=clk_cpatest_1
 }
 
 // Conversions.Create — повтор с той же тройкой «сеть + external_id + цель»
@@ -261,6 +261,14 @@ func ExampleConversionsService_Get() {
 	defer stand.Close()
 	client := standClient(stand)
 
+	// Карточка читается у заведённой конверсии: неизвестный адрес дверь
+	// отвечает 404 CONVERSION_NOT_FOUND, и стенд отвечает так же.
+	if _, _, err := client.Conversions.Create(context.Background(), cpa.CreateConversionParams{
+		ClickID: "clk_1", ExternalID: "order-1", Status: "approved",
+	}); err != nil {
+		fmt.Println("отказ:", err)
+		return
+	}
 	conversion, _, err := client.Conversions.Get(context.Background(), cpa.GetConversionParams{
 		ExternalID: "order-1",
 		Goal:       cpa.Ptr("1"),
@@ -284,6 +292,14 @@ func ExampleConversionsService_Cancel() {
 	defer stand.Close()
 	client := standClient(stand)
 
+	// Отменять есть что: стенд гасит заведённую строку, неизвестный адрес —
+	// 404 CONVERSION_NOT_FOUND, как у двери.
+	if _, _, err := client.Conversions.Create(context.Background(), cpa.CreateConversionParams{
+		ClickID: "clk_1", ExternalID: "order-1", Status: "approved",
+	}); err != nil {
+		fmt.Println("отказ:", err)
+		return
+	}
 	conversion, _, err := client.Conversions.Cancel(context.Background(), cpa.CancelConversionParams{
 		ExternalID: "order-1",
 		Reason:     "возврат заказа",

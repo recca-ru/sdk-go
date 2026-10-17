@@ -8,6 +8,7 @@ package cpatest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"go.recca.ru/sdk/cpa"
+	"go.recca.ru/sdk/cpatypes"
 )
 
 // recorder подменяет *testing.T: собирает то, что набор сообщил, вместо того
@@ -317,8 +319,9 @@ func TestServerEchoesWhatWasAsked(t *testing.T) {
 		t.Errorf("первый приём ответил %d, ждали 201", resp.StatusCode)
 	}
 
-	// ⚠⚠ Повтор — 200 и ТА ЖЕ строка: это единственная логика стенда кроме отдачи
-	// фикстур, и без неё Conformance нельзя было бы прогнать против него.
+	// ⚠⚠ Повтор — 200 и ТА ЖЕ строка: идемпотентность приёма — одно из правил
+	// стенда (заголовок пакета), и без неё Conformance нельзя было бы прогнать
+	// против него.
 	repeat, repeatResp, err := c.Conversions.Create(context.Background(), cpa.CreateConversionParams{
 		ClickID: "clk_1", ExternalID: "echo-1", Status: "approved", Goal: cpa.Ptr("webinar"),
 	})
@@ -667,6 +670,191 @@ func TestServerGoalKeyFollowsDoor(t *testing.T) {
 			t.Errorf("%s: HTTP %d, ждали %d", tc.name, resp.StatusCode, tc.want)
 		}
 	}
+}
+
+// ⚠⚠ Гейт пары «клик + цель» держит решения двери (WV-0827): занятая пара у
+// цели без флага — 409 ALREADY_CONVERTED, называющий занявший заказ; у цели с
+// флагом второй заказ той же пары — своя конверсия; чужой клик — своя пара;
+// повтор своего external_id — идемпотентность, а не гейт; отмена гасит строку
+// и возвращает паре платежеспособность (дверь ищет занявший заказ только среди
+// hold и approved). Иначе сценарий 6 доказывал бы на стенде поведение, которого
+// у живой двери нет.
+func TestServerPairGateFollowsDoor(t *testing.T) {
+	s := NewServer(t)
+	c := s.Client(t)
+	ctx := context.Background()
+
+	click := func(key string) cpatypes.ClickID {
+		t.Helper()
+		cl, _, err := c.Clicks.Create(ctx, cpa.CreateClickParams{
+			PartnerExternalID: "blogger-42", OfferID: "off_1", ClientClickID: key, Country: "RU",
+		})
+		if err != nil {
+			t.Fatalf("клик %s: %v", key, err)
+		}
+		return *cl.ClickID
+	}
+	create := func(clickID cpatypes.ClickID, externalID, goal string) (int, error) {
+		_, resp, err := c.Conversions.Create(ctx, cpa.CreateConversionParams{
+			ClickID: clickID, ExternalID: externalID, Status: "approved", Goal: cpa.Ptr(goal),
+		})
+		if err != nil {
+			return 0, err
+		}
+		return resp.StatusCode, nil
+	}
+
+	first := click("gate-1")
+
+	// Цель без флага: первый заказ пары — 201, второй с чужим external_id — 409,
+	// и отказ называет занявший заказ.
+	if status, err := create(first, "gate-order-1", "1"); err != nil || status != http.StatusCreated {
+		t.Fatalf("первый заказ пары: %v, HTTP %d, ждали 201", err, status)
+	}
+	_, err := create(first, "gate-order-2", "1")
+	if !errorsIs(err, cpa.ErrAlreadyConverted) {
+		t.Fatalf("второй заказ занятой пары: %v, ждали ALREADY_CONVERTED", err)
+	}
+	var apiErr *cpa.APIError
+	if !errors.As(err, &apiErr) || !strings.Contains(apiErr.Message, "gate-order-1") {
+		t.Errorf("отказ не называет занявший пару заказ: %v", err)
+	}
+
+	// Повтор СВОЕГО external_id — идемпотентность, а не гейт.
+	if status, err := create(first, "gate-order-1", "1"); err != nil || status != http.StatusOK {
+		t.Errorf("повтор своего заказа: %v, HTTP %d, ждали 200", err, status)
+	}
+
+	// Цель с флагом («repeat» в фикстуре): каждый заказ пары — своя конверсия.
+	if status, err := create(first, "gate-multi-1", "repeat"); err != nil || status != http.StatusCreated {
+		t.Fatalf("первый заказ цели с флагом: %v, HTTP %d, ждали 201", err, status)
+	}
+	if status, err := create(first, "gate-multi-2", "repeat"); err != nil || status != http.StatusCreated {
+		t.Errorf("второй заказ цели с флагом: %v, HTTP %d, ждали 201", err, status)
+	}
+
+	// Другой клик — своя пара даже у цели без флага.
+	second := click("gate-2")
+	if status, err := create(second, "gate-order-3", "1"); err != nil || status != http.StatusCreated {
+		t.Errorf("та же цель с другого клика: %v, HTTP %d, ждали 201", err, status)
+	}
+
+	// Отмена занявшего заказа освобождает пару.
+	if _, _, err := c.Conversions.Cancel(ctx, cpa.CancelConversionParams{
+		ExternalID: "gate-order-1", Goal: cpa.Ptr("1"),
+	}); err != nil {
+		t.Fatalf("отмена занявшего заказа: %v", err)
+	}
+	if status, err := create(first, "gate-order-4", "1"); err != nil || status != http.StatusCreated {
+		t.Errorf("пара после отмены занявшего заказа: %v, HTTP %d, ждали 201", err, status)
+	}
+}
+
+// Окно времени события — решения двери (WV-0828 Ж-15): occurred_at строго
+// глубже 90 дней — 400 OCCURRED_AT_OUT_OF_WINDOW; ровно на границе и внутри
+// окна — принимается; без occurred_at — прежняя семантика. Часы стенда
+// заморожены: на настоящих «ровно граница» мигало бы на микросекундах между
+// конструкцией значения и разбором запроса. Каждый случай идёт своим кликом —
+// гейт пары здесь не предмет измерения.
+func TestServerOccurredAtWindowFollowsDoor(t *testing.T) {
+	s := NewServer(t)
+	frozen := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	s.clock = func() time.Time { return frozen }
+	c := s.Client(t)
+	ctx := context.Background()
+
+	create := func(clickID cpatypes.ClickID, externalID string, occurredAt *time.Time) (int, error) {
+		_, resp, err := c.Conversions.Create(ctx, cpa.CreateConversionParams{
+			ClickID: clickID, ExternalID: externalID, Status: "approved", OccurredAt: occurredAt,
+		})
+		if err != nil {
+			return 0, err
+		}
+		return resp.StatusCode, nil
+	}
+
+	deep := frozen.Add(-occurredAtWindowDepth - time.Minute)
+	_, err := create("clk_win_old", "win-old", &deep)
+	if !errorsIs(err, cpa.ErrOccurredAtOutOfWindow) {
+		t.Fatalf("глубже окна: %v, ждали OCCURRED_AT_OUT_OF_WINDOW", err)
+	}
+	var apiErr *cpa.APIError
+	if !errors.As(err, &apiErr) || apiErr.HTTPStatus != http.StatusBadRequest {
+		t.Errorf("код приехал не со статусом 400: %v", err)
+	}
+	// Дверь называет виновника поимённо: details { field: "occurred_at" }
+	// (conversions/route.ts), и APIError несёт details конверта как есть.
+	var details struct {
+		Field string `json:"field"`
+	}
+	if derr := json.Unmarshal(apiErr.Details, &details); derr != nil || details.Field != "occurred_at" {
+		t.Errorf("отказ не называет поле поимённо: %v, details=%s", derr, apiErr.Details)
+	}
+
+	// Граница ВКЛЮЧИТЕЛЬНА: ровно 90 дней назад — ещё принимается.
+	edge := frozen.Add(-occurredAtWindowDepth)
+	if status, err := create("clk_win_edge", "win-edge", &edge); err != nil || status != http.StatusCreated {
+		t.Errorf("ровно на границе окна: %v, HTTP %d, ждали приём", err, status)
+	}
+	inside := frozen.Add(-time.Hour)
+	if status, err := create("clk_win_in", "win-inside", &inside); err != nil || status != http.StatusCreated {
+		t.Errorf("внутри окна: %v, HTTP %d, ждали приём", err, status)
+	}
+	if status, err := create("clk_win_none", "win-none", nil); err != nil || status != http.StatusCreated {
+		t.Errorf("без occurred_at: %v, HTTP %d, ждали приём", err, status)
+	}
+}
+
+// Требование рекламодательской проекции — решения двери (WV-0828 Д2R1-07,
+// с 02.10): без advertiser_id — 400 INVALID_INPUT с поимённым полем; чужой
+// рекламодатель — 404 ADVERTISER_NOT_FOUND, карточку чужого не открыть
+// перебором; свой — проекция рекламодателя. Правило держат ОБЕ двери чтения,
+// карточка и каталог. Отсутствие этого правила на стенде спрятало дефект
+// v0.2.1 (GetForAdvertiser без параметра) от оракула и мутаций — нашла
+// живая приёмка 03.10.
+func TestServerAdvertiserViewRequiresAdvertiserFollowsDoor(t *testing.T) {
+	s := NewServer(t)
+	c := s.Client(t)
+	ctx := context.Background()
+
+	// Без параметра — через raw Do: клиент с новой сигнатурой пустой
+	// рекламодатель отрежет до сети (ErrValidation), и до стенда запрос не
+	// дойдёт — а правило стенда обязано быть проверено именно на стенде.
+	var card map[string]json.RawMessage
+	if _, err := c.Do(ctx, http.MethodGet, "/cpa/offers/off_1?view=advertiser", nil, &card); !errorsIs(err, cpa.ErrInvalidInput) {
+		t.Errorf("карточка без рекламодателя: %v, ждали INVALID_INPUT", err)
+	} else if apiErr := asAPIError(err); apiErr != nil {
+		var details struct {
+			Field string `json:"field"`
+		}
+		if derr := json.Unmarshal(apiErr.Details, &details); derr != nil || details.Field != "advertiser_id" {
+			t.Errorf("отказ не называет поле поимённо: %v, details=%s", derr, apiErr.Details)
+		}
+	}
+	var rows []map[string]json.RawMessage
+	if _, err := c.Do(ctx, http.MethodGet, "/cpa/offers?view=advertiser", nil, &rows); !errorsIs(err, cpa.ErrInvalidInput) {
+		t.Errorf("каталог без рекламодателя: %v, ждали INVALID_INPUT", err)
+	}
+
+	if _, _, err := c.Offers.GetForAdvertiser(ctx, "off_1", "adv_2"); !errorsIs(err, cpa.ErrAdvertiserNotFound) {
+		t.Errorf("чужой рекламодатель: %v, ждали ADVERTISER_NOT_FOUND", err)
+	}
+	offer, _, err := c.Offers.GetForAdvertiser(ctx, "off_1", "adv_1")
+	if err != nil {
+		t.Fatalf("свой рекламодатель отбит: %v", err)
+	}
+	if offer.AdvertiserID != "adv_1" {
+		t.Errorf("карточка вернулась не того оффера: рекламодатель %q", offer.AdvertiserID)
+	}
+}
+
+// asAPIError достаёт ответ двери из цепочки, если он там есть.
+func asAPIError(err error) *cpa.APIError {
+	var apiErr *cpa.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr
+	}
+	return nil
 }
 
 // ⚠⚠ Сценарий 4 проверяет СОГЛАСОВАННОСТЬ баланса и двери заявок. Четыре мира:

@@ -74,9 +74,9 @@ default: log.Printf("принято: %s, выплата %s ₽", conv.Status, co
 | `Partners.Get` | `GET /cpa/partners/{external_id}` | `cpa:partners:read` | да |
 | `Partners.Balance` | `GET /cpa/partners/{external_id}/balance` | `cpa:partners:read` | да |
 | `Offers.ListForPartner` | `GET /cpa/offers?view=partner` | `cpa:offers:read` | да |
-| `Offers.ListForAdvertiser` | `GET /cpa/offers?view=advertiser` | `cpa:offers:read` | да |
+| `Offers.ListForAdvertiser` | `GET /cpa/offers?view=advertiser&advertiser_id=…` | `cpa:offers:read` | да |
 | `Offers.GetForPartner` | `GET /cpa/offers/{id}?view=partner` | `cpa:offers:read` | да |
-| `Offers.GetForAdvertiser` | `GET /cpa/offers/{id}?view=advertiser` | `cpa:offers:read` | да |
+| `Offers.GetForAdvertiser` | `GET /cpa/offers/{id}?view=advertiser&advertiser_id=…` | `cpa:offers:read` | да |
 | `Offers.Creatives` | `GET /cpa/offers/{id}/creatives` | `cpa:offers:read` | да |
 | `Links.Create` | `POST /cpa/links` | `cpa:links:write` | да |
 | `Clicks.Create` | `POST /cpa/clicks` | `cpa:clicks:write` | **нет** |
@@ -135,8 +135,12 @@ default: log.Printf("принято: %s, выплата %s ₽", conv.Status, co
 
 **Оффер: две проекции — два метода.** `ListForAdvertiser` и `GetForAdvertiser`
 отдают выручку рекламодателя; `ListForPartner` и `GetForPartner` — ставку
-партнёра. Каталог рекламодателя требует рекламодателя:
-`ListForAdvertiser(ctx, advertiserID, params)`, без него отказ до сети.
+партнёра. Оба метода рекламодателя требуют его аргументом:
+`ListForAdvertiser(ctx, advertiserID, params)` и
+`GetForAdvertiser(ctx, offerID, advertiserID)` — с 02.10.2026 дверь не
+отдаёт проекцию без `advertiser_id`, а чужой идентификатор получает 404:
+ставки чужих карточек не открываются перебором. Идентификатор — поле
+`advertiser_id` любого ответа об оффере; пустой аргумент — отказ до сети.
 
 **`Clicks.Create` не повторяется.** Повтор — это второй переход и лишний расход
 капа оффера. Если ваш фронт может продублировать вызов, присылайте свой
@@ -274,7 +278,7 @@ RECCA_CPA_SANDBOX_KEY=<ключ арендатора песочницы> go test
 
 ### Сценарии приёмки по договору
 
-Общие цепочки выше проверяют библиотеку и дверь. Сценарии 1–4 дополнения к
+Общие цепочки выше проверяют библиотеку и дверь. Сценарии 1–4 и 6 дополнения к
 Приложению № 1 проверяют свойства конкретных офферов и включаются опцией
 `Scenarios` — каждому свой оффер:
 
@@ -284,6 +288,8 @@ cpatest.Conformance(t, client, cpatest.ConformanceOptions{
         BrandOfferID: "…", BrandGoal: "brand_registered", // 1: бренды и блогеры
         GoalOfferID:  "…", Goal: "sale",                  // 3: целевое действие
         RevshareOfferID: "…",                             // 2 (скаут) и 4 (revshare)
+        MultiOfferID: "…", MultiGoal: "multi",            // 6: несколько конверсий
+        MultiPlainGoal: "single",                         //    с одного клика (WV-0827)
     },
 })
 ```
@@ -293,6 +299,15 @@ cpatest.Conformance(t, client, cpatest.ConformanceOptions{
 офферы приёмки уже заведены; их идентификаторы передаются вместе с ключом.
 ⚠ Смену статуса по истечении холда (сценарий 3) набор в том же прогоне не
 измеряет: её доказывает вебхук `cpa.conversion.approved`, пришедший после холда.
+
+Сценарий 6 требует на ОДНОМ оффере пару целей: `MultiGoal` — с включённым
+оператором флагом `multiple_per_click` (каждый заказ той же цели с того же
+клика платится своей конверсией), `MultiPlainGoal` — без него (второй заказ
+пары — `409 ALREADY_CONVERTED`, и отказ называет занявший заказ). Флаг у цели
+включает оператор сети: набор его только читает — из обеих проекций оффера,
+и расхождение проекций красит приёмку. В песочнице переменные:
+`RECCA_CPA_SANDBOX_MULTI_OFFER`, `RECCA_CPA_SANDBOX_MULTI_GOAL`,
+`RECCA_CPA_SANDBOX_MULTI_PLAIN_GOAL`.
 
 ---
 

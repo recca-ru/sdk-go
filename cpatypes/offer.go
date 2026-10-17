@@ -69,6 +69,12 @@ type OfferGoalPartner struct {
 	IsMilestone bool  `json:"is_milestone" cpa:"required"`
 	PayoutRate  *Rate `json:"payout_rate"`
 	HoldDays    *int  `json:"hold_days"`
+	// MultiplePerClick — цель принимает несколько оплачиваемых конверсий с
+	// одного клика (WV-0827): интегратор решает по флагу, слать ли второй заказ
+	// той же цели. Включает оператор; у вехи всегда false. Обязательности нет:
+	// отсутствие поля — то же, что false, и нулевое значение bool здесь не ложь
+	// разбора, а семантика контракта.
+	MultiplePerClick bool `json:"multiple_per_click"`
 }
 
 // OfferGoalAdvertiser — та же цель в проекции рекламодателя.
@@ -81,6 +87,15 @@ type OfferGoalAdvertiser struct {
 	IsMilestone bool   `json:"is_milestone" cpa:"required"`
 	RevenueRate *Rate  `json:"revenue_rate"`
 	HoldDays    *int   `json:"hold_days"`
+	// MultiplePerClick — см. партнёрскую проекцию (WV-0827).
+	MultiplePerClick bool `json:"multiple_per_click"`
+	// Disabled — цель выключена оператором сети (WV-0872): новые конверсии по
+	// ней отклоняются кодом GOAL_DISABLED (409), уже записанные живут как жили.
+	// Рекламодателю цель остаётся в списке с флагом — это его интеграция, и
+	// «цель есть, но приём остановлен» честнее пустого списка. В партнёрской
+	// проекции поля нет намеренно: там выключенная цель скрыта целиком.
+	// Обязательности нет: отсутствие поля — то же, что false (сервер до WV-0872).
+	Disabled bool `json:"disabled"`
 }
 
 // OfferPartnerView — оффер в партнёрской проекции: то, что видит блогер.

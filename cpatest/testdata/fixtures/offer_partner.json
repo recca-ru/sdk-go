@@ -13,6 +13,7 @@
       "code": "1",
       "name": "Оплата",
       "is_milestone": false,
+      "multiple_per_click": false,
       "payout_rate": {
         "kind": "fixed",
         "value_rub": 500,
@@ -24,8 +25,21 @@
       "code": "webinar",
       "name": "Дошёл до вебинара",
       "is_milestone": true,
+      "multiple_per_click": false,
       "payout_rate": null,
       "hold_days": null
+    },
+    {
+      "code": "repeat",
+      "name": "Повторная оплата",
+      "is_milestone": false,
+      "multiple_per_click": true,
+      "payout_rate": {
+        "kind": "fixed",
+        "value_rub": 500,
+        "value_percent": null
+      },
+      "hold_days": 30
     }
   ],
   "geo": {

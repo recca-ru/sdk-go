@@ -38,15 +38,17 @@ const (
 	CodeConversionNotFound = cpatypes.CodeConversionNotFound
 	CodePayoutNotFound     = cpatypes.CodePayoutNotFound
 
-	CodeUnknownGoal         = cpatypes.CodeUnknownGoal
-	CodeWindowExpired       = cpatypes.CodeWindowExpired
-	CodeAlreadyConverted    = cpatypes.CodeAlreadyConverted
-	CodeExternalIDConflict  = cpatypes.CodeExternalIDConflict
-	CodeIllegalTransition   = cpatypes.CodeIllegalTransition
-	CodeIdempotentMismatch  = cpatypes.CodeIdempotentMismatch
-	CodeBelowMinPayout      = cpatypes.CodeBelowMinPayout
-	CodeInsufficientBalance = cpatypes.CodeInsufficientBalance
-	CodeReversalFailed      = cpatypes.CodeReversalFailed
+	CodeUnknownGoal           = cpatypes.CodeUnknownGoal
+	CodeGoalDisabled          = cpatypes.CodeGoalDisabled
+	CodeWindowExpired         = cpatypes.CodeWindowExpired
+	CodeOccurredAtOutOfWindow = cpatypes.CodeOccurredAtOutOfWindow
+	CodeAlreadyConverted      = cpatypes.CodeAlreadyConverted
+	CodeExternalIDConflict    = cpatypes.CodeExternalIDConflict
+	CodeIllegalTransition     = cpatypes.CodeIllegalTransition
+	CodeIdempotentMismatch    = cpatypes.CodeIdempotentMismatch
+	CodeBelowMinPayout        = cpatypes.CodeBelowMinPayout
+	CodeInsufficientBalance   = cpatypes.CodeInsufficientBalance
+	CodeReversalFailed        = cpatypes.CodeReversalFailed
 
 	CodeMalformedResponse = cpatypes.CodeMalformedResponse
 )
@@ -71,15 +73,17 @@ var (
 	ErrConversionNotFound = cpatypes.ErrConversionNotFound
 	ErrPayoutNotFound     = cpatypes.ErrPayoutNotFound
 
-	ErrUnknownGoal         = cpatypes.ErrUnknownGoal
-	ErrWindowExpired       = cpatypes.ErrWindowExpired
-	ErrAlreadyConverted    = cpatypes.ErrAlreadyConverted
-	ErrExternalIDConflict  = cpatypes.ErrExternalIDConflict
-	ErrIllegalTransition   = cpatypes.ErrIllegalTransition
-	ErrIdempotentMismatch  = cpatypes.ErrIdempotentMismatch
-	ErrBelowMinPayout      = cpatypes.ErrBelowMinPayout
-	ErrInsufficientBalance = cpatypes.ErrInsufficientBalance
-	ErrReversalFailed      = cpatypes.ErrReversalFailed
+	ErrUnknownGoal           = cpatypes.ErrUnknownGoal
+	ErrGoalDisabled          = cpatypes.ErrGoalDisabled
+	ErrWindowExpired         = cpatypes.ErrWindowExpired
+	ErrOccurredAtOutOfWindow = cpatypes.ErrOccurredAtOutOfWindow
+	ErrAlreadyConverted      = cpatypes.ErrAlreadyConverted
+	ErrExternalIDConflict    = cpatypes.ErrExternalIDConflict
+	ErrIllegalTransition     = cpatypes.ErrIllegalTransition
+	ErrIdempotentMismatch    = cpatypes.ErrIdempotentMismatch
+	ErrBelowMinPayout        = cpatypes.ErrBelowMinPayout
+	ErrInsufficientBalance   = cpatypes.ErrInsufficientBalance
+	ErrReversalFailed        = cpatypes.ErrReversalFailed
 
 	ErrMalformedResponse = cpatypes.ErrMalformedResponse
 

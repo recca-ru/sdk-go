@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"go.recca.ru/sdk/cpa"
 )
@@ -75,9 +77,15 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request, path string, body
 		s.writeData(w, requestID, s.balance(), http.StatusOK, nil)
 
 	case path == "/cpa/offers" && r.Method == http.MethodGet:
+		if !s.advertiserViewAllowed(w, r, requestID) {
+			return
+		}
 		s.writeList(w, requestID, []json.RawMessage{s.offerFor(r)})
 
 	case len(segments) == 3 && segments[1] == "offers" && r.Method == http.MethodGet:
+		if !s.advertiserViewAllowed(w, r, requestID) {
+			return
+		}
 		s.writeData(w, requestID, s.offerFor(r), http.StatusOK, nil)
 
 	case len(segments) == 4 && segments[1] == "offers" && segments[3] == "creatives" && r.Method == http.MethodGet:
@@ -92,7 +100,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request, path string, body
 		s.writeData(w, requestID, fixture("link.json"), http.StatusCreated, nil)
 
 	case path == "/cpa/clicks" && r.Method == http.MethodPost:
-		s.writeData(w, requestID, fixture("click.json"), http.StatusCreated, nil)
+		s.acceptClick(w, body, requestID)
 
 	case path == "/cpa/conversions" && r.Method == http.MethodGet:
 		s.writeList(w, requestID, []json.RawMessage{stripTriple(fixture("conversion.json"))})
@@ -101,10 +109,10 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request, path string, body
 		s.acceptConversion(w, body, requestID)
 
 	case len(segments) == 3 && segments[1] == "conversions" && r.Method == http.MethodGet:
-		s.writeData(w, requestID, s.applyTamper(fixture("conversion.json")), http.StatusOK, nil)
+		s.conversionAt(w, r, segments[2], requestID)
 
 	case len(segments) == 4 && segments[1] == "conversions" && segments[3] == "cancel" && r.Method == http.MethodPost:
-		s.writeData(w, requestID, withStatus(fixture("conversion.json"), "declined"), http.StatusOK, nil)
+		s.cancelConversion(w, body, segments[2], requestID)
 
 	case path == "/cpa/payouts" && r.Method == http.MethodGet:
 		s.writeList(w, requestID, []json.RawMessage{fixture("payout.json")})
@@ -152,16 +160,31 @@ func (s *Server) writeList(w http.ResponseWriter, requestID string, rows []json.
 	})
 }
 
+// writeError — отказ без поимённого поля. Дверь несёт details всегда (null,
+// когда поля нет), и стенд повторяет форму конверта дословно: клиент,
+// ожидающий ключ, не должен видеть его то есть, то нет.
 func (s *Server) writeError(w http.ResponseWriter, requestID string, code cpa.ErrorCode, message string) {
+	s.writeErrorDetails(w, requestID, code, message, nil)
+}
+
+// writeErrorDetails — отказ с поимённым полем: дверь на отказах про вход
+// называет в details виновника (окно occurred_at — { field: "occurred_at" }).
+func (s *Server) writeErrorDetails(w http.ResponseWriter, requestID string, code cpa.ErrorCode, message string, details map[string]any) {
 	status, known := cpa.HTTPStatusFor(code)
 	if !known {
 		// Код вне реестра — ошибка вызова PrepareError, и она обязана быть видна.
 		status = http.StatusInternalServerError
 		message = "cpatest: код " + string(code) + " не принадлежит реестру контракта"
 	}
+	// nilany, а не пустая карта: без поимённого поля дверь шлёт details: null,
+	// и пустой объект {} читался бы как «поле есть, но не названо».
+	var nilable any
+	if details != nil {
+		nilable = details
+	}
 	writeJSON(w, status, map[string]any{
 		"success": false,
-		"error":   map[string]any{"code": string(code), "message": message},
+		"error":   map[string]any{"code": string(code), "message": message, "details": nilable},
 		"meta":    mergeMeta(requestID, nil),
 	})
 }
@@ -294,28 +317,130 @@ func (s *Server) offerFor(r *http.Request) json.RawMessage {
 	return fixture("offer_partner.json")
 }
 
-// ── идемпотентность: единственная логика стенда ──────────────────────────────
+// advertiserViewAllowed держит требование двери к view=advertiser
+// (WV-0828 Д2R1-07, с 02.10): параметр advertiser_id обязан явиться — и
+// обязан называть рекламодателя ЭТОГО оффера, у стенда он один (adv_1):
+// чужой идентификатор открывал бы ставки чужой карточки перебором. Ответы —
+// двери дословно: 400 INVALID_INPUT с поимённым полем, чужой — 404
+// ADVERTISER_NOT_FOUND (текст — реестра, его же шлёт дверь). Правило держат
+// ОБЕ двери чтения: каталог и карточка.
+//
+// ⚠⚠ До 03.10 стенд этого требования не моделировал — и дефект v0.2.1
+// (GetForAdvertiser не шлёт advertiser_id) стоял зелёным против стенда,
+// оракула и мутаций; нашла его живая приёмка против песочницы.
+func (s *Server) advertiserViewAllowed(w http.ResponseWriter, r *http.Request, requestID string) bool {
+	if r.URL.Query().Get("view") != "advertiser" {
+		return true
+	}
+	advertiserID := r.URL.Query().Get("advertiser_id")
+	if advertiserID == "" {
+		s.writeErrorDetails(w, requestID, cpa.CodeInvalidInput,
+			"advertiser_id is required when view=advertiser",
+			map[string]any{"field": "advertiser_id"})
+		return false
+	}
+	if advertiserID != "adv_1" {
+		s.writeErrorDetails(w, requestID, cpa.CodeAdvertiserNotFound,
+			"Рекламодателя с таким `advertiser_id` в этой сети нет.",
+			map[string]any{"field": "advertiser_id"})
+		return false
+	}
+	return true
+}
+
+// ── идемпотентность и гейт пары: логика стенда ───────────────────────────────
+
+// multipleGoals — флаг «несколько конверсий с одного клика» по коду цели,
+// прочитанный из партнёрской проекции оффера стенда. Флаг приходит в ОБЕИХ
+// проекциях (контракт 2026-10-02), стенду для решения гейта достаточно одной.
+var multipleGoals = sync.OnceValue(func() map[string]bool {
+	var offer struct {
+		Goals []struct {
+			Code             string `json:"code"`
+			MultiplePerClick bool   `json:"multiple_per_click"`
+		} `json:"goals"`
+	}
+	if err := json.Unmarshal(fixture("offer_partner.json"), &offer); err != nil {
+		panic("cpatest: цели партнёрской проекции не разобраны: " + err.Error())
+	}
+	flags := make(map[string]bool, len(offer.Goals))
+	for _, g := range offer.Goals {
+		flags[g.Code] = g.MultiplePerClick
+	}
+	return flags
+})
+
+// goalAllowsMultiple — включено ли у цели «несколько конверсий с одного клика».
+// Цели вне словаря — false: стенд структурный, и цель, которой он не знает,
+// консервативно одиночна, а не молча проводит вторую конверсию.
+func goalAllowsMultiple(goal string) bool { return multipleGoals()[goal] }
+
+// occurredAtWindowDepth — окно времени события двери (WV-0828 Ж-15):
+// конверсии принимаются не глубже 90 дней. Глубже — бэкдейтинг клал
+// конверсию в чужой день отчёта и ел кап того дня. Граница ВКЛЮЧИТЕЛЬНА:
+// ровно 90 дней назад — ещё принимается (дверь: parseOccurredAt в Recca).
+const occurredAtWindowDepth = 90 * 24 * time.Hour
+
+// occurredAtTooOld — событие глубже окна. Без метки — false: дверь живёт
+// прежней семантикой. Будущее здесь НЕ проверяется: его дверь бракует
+// INVALID_INPUT'ом, и это другой код, не OCCURRED_AT_OUT_OF_WINDOW.
+func (s *Server) occurredAtTooOld(at *time.Time) bool {
+	if at == nil {
+		return false
+	}
+	return at.Before(s.now().Add(-occurredAtWindowDepth))
+}
+
+// now — время стенда; замораживается внутренним тестом границы окна: на
+// настоящих часах «ровно 90 дней» мигало бы на микросекундах между
+// конструкцией значения и разбором запроса.
+func (s *Server) now() time.Time {
+	s.mu.Lock()
+	clock := s.clock
+	s.mu.Unlock()
+	if clock != nil {
+		return clock()
+	}
+	return time.Now()
+}
+
+// normalizeGoal — общий ключ цели для приёма, чтения и отмены: нет поля и
+// пустая строка — «1», как normalizeGoal в Recca. Разойдись адресация приёма и
+// чтения, карточка не нашлась бы на конверсии, только что созданной.
+func normalizeGoal(goal *string) string {
+	if goal != nil && strings.TrimSpace(*goal) != "" {
+		return strings.TrimSpace(*goal)
+	}
+	return "1"
+}
 
 func (s *Server) acceptConversion(w http.ResponseWriter, body []byte, requestID string) {
 	var in struct {
+		ClickID    string           `json:"click_id"`
 		ExternalID string           `json:"external_id"`
 		Goal       *string          `json:"goal"`
 		Status     string           `json:"status"`
 		SubID      string           `json:"sub_id"`
 		SumRUB     *json.RawMessage `json:"sum_rub"`
+		OccurredAt *time.Time       `json:"occurred_at"`
 	}
 	if err := json.Unmarshal(body, &in); err != nil {
 		s.writeError(w, requestID, cpa.CodeInvalidInput, "cpatest: тело не разобрано")
 		return
 	}
 
-	// Как дверь (normalizeGoal в Recca): нет ключа и пустая строка — цель "1".
-	// Разойдись стенд с дверью здесь, Ptr("") давал бы на стенде новую конверсию,
-	// а в песочнице — повтор существующей.
-	goal := "1"
-	if in.Goal != nil && strings.TrimSpace(*in.Goal) != "" {
-		goal = strings.TrimSpace(*in.Goal)
+	// Окно времени события (WV-0828 Ж-15) — до идемпотентности, как у двери:
+	// вход вне окна не принимается вовсе, и повтор старого заказа не может
+	// пройти «по памяти». Текст — двери, дословно; details называет поле
+	// поимённо, тоже как дверь.
+	if s.occurredAtTooOld(in.OccurredAt) {
+		s.writeErrorDetails(w, requestID, cpa.CodeOccurredAtOutOfWindow,
+			"occurred_at is older than the 90-day window",
+			map[string]any{"field": "occurred_at"})
+		return
 	}
+
+	goal := normalizeGoal(in.Goal)
 	key := in.ExternalID + "\x00" + goal
 
 	s.mu.Lock()
@@ -335,6 +460,26 @@ func (s *Server) acceptConversion(w http.ResponseWriter, body []byte, requestID 
 		return
 	}
 
+	// Гейт пары «клик + цель» (WV-0827): без включённой у цели «несколько
+	// конверсий с одного клика» пара платится один раз. Идемпотентность уже
+	// отработала выше — до гейта, как у двери: повтор СВОЕГО заказа успех при
+	// любом состоянии пары. Отказ называет заказ, занявший пару: интегратор
+	// решает по номеру, чей это повтор. Текст — двери, дословно.
+	if in.ClickID != "" {
+		pair := in.ClickID + "\x00" + goal
+		s.mu.Lock()
+		occupier, taken := s.pairGates[pair]
+		ignore := s.ignorePairGate
+		s.mu.Unlock()
+		if !ignore && taken && occupier != in.ExternalID && !goalAllowsMultiple(goal) {
+			s.writeError(w, requestID, cpa.CodeAlreadyConverted, fmt.Sprintf(
+				"click has already converted for this goal by external_id %q; "+
+					"one click pays once per goal unless the goal allows multiple conversions per click",
+				occupier))
+			return
+		}
+	}
+
 	set := map[string]any{"external_id": in.ExternalID, "goal": goal}
 	if in.SubID != "" {
 		set["sub_id"] = in.SubID
@@ -348,9 +493,100 @@ func (s *Server) acceptConversion(w http.ResponseWriter, body []byte, requestID 
 
 	s.mu.Lock()
 	s.conversions[key] = record
+	if in.ClickID != "" {
+		s.convClick[key] = in.ClickID
+		s.pairGates[in.ClickID+"\x00"+goal] = in.ExternalID
+	}
 	s.mu.Unlock()
 
 	s.writeData(w, requestID, record, http.StatusCreated, nil)
+}
+
+// acceptClick выдаёт переход. Ключ отправителя идемпотентен, как у двери:
+// повтор ключа возвращает ТОТ ЖЕ клик (200), новый ключ — новый клик (201), без
+// ключа каждый вызов — новый переход. Раньше стенд раздавал всем один
+// фикстурный click_id, и пара «клик + цель» была неразличима между вызовами.
+func (s *Server) acceptClick(w http.ResponseWriter, body []byte, requestID string) {
+	var in struct {
+		ClientClickID string `json:"client_click_id"`
+	}
+	_ = json.Unmarshal(body, &in)
+
+	s.mu.Lock()
+	clickID, repeat := s.clicks[in.ClientClickID]
+	if !repeat {
+		s.clickID++
+		clickID = "clk_cpatest_" + strconv.Itoa(s.clickID)
+		if in.ClientClickID != "" {
+			s.clicks[in.ClientClickID] = clickID
+		}
+	}
+	s.mu.Unlock()
+
+	status := http.StatusCreated
+	if repeat {
+		status = http.StatusOK
+	}
+	// redirect_url фикстуры несёт ЕЁ клик; дверь строит адрес на выданный
+	// click_id, и стенд подставляет его, чтобы ответ не ссылался на чужой клик.
+	raw := fixture("click.json")
+	var clickDoc struct {
+		ClickID     string `json:"click_id"`
+		RedirectURL string `json:"redirect_url"`
+	}
+	_ = json.Unmarshal(raw, &clickDoc)
+	set := map[string]any{"click_id": clickID}
+	if clickDoc.RedirectURL != "" && clickDoc.ClickID != "" {
+		set["redirect_url"] = strings.Replace(clickDoc.RedirectURL, clickDoc.ClickID, clickID, 1)
+	}
+	s.writeData(w, requestID, patch(raw, set), status, nil)
+}
+
+// conversionAt отдаёт карточку СОХРАННЁННОЙ строки по тройке «external_id +
+// цель»: цель — query-параметр. Раньше стенд отвечал фикстурой на любой адрес —
+// «вторая конверсия жива после отмены первой» было бы недоказуемо. Нет строки —
+// 404 CONVERSION_NOT_FOUND: «не заводили» и «пусто» — разные ответы.
+func (s *Server) conversionAt(w http.ResponseWriter, r *http.Request, externalID, requestID string) {
+	goal := r.URL.Query().Get("goal")
+	s.mu.Lock()
+	stored, ok := s.conversions[externalID+"\x00"+normalizeGoal(&goal)]
+	s.mu.Unlock()
+	if !ok {
+		s.writeError(w, requestID, cpa.CodeConversionNotFound,
+			fmt.Sprintf("cpatest: конверсия %s на цели %q стендом не заведена", externalID, normalizeGoal(&goal)))
+		return
+	}
+	s.writeData(w, requestID, s.applyTamper(stored), http.StatusOK, nil)
+}
+
+// cancelConversion гасит сохранённую строку: статус declined. Если эта строка
+// держала пару «клик + цель», пара освобождается — дверь ищет занявший заказ
+// по статусам hold/approved (WV-0827), значит отмена возвращает паре
+// платежеспособность. Повторная отмена идемпотентна: строка уже declined.
+func (s *Server) cancelConversion(w http.ResponseWriter, body []byte, externalID, requestID string) {
+	var in struct {
+		Goal *string `json:"goal"`
+	}
+	_ = json.Unmarshal(body, &in)
+	goal := normalizeGoal(in.Goal)
+	key := externalID + "\x00" + goal
+
+	s.mu.Lock()
+	stored, ok := s.conversions[key]
+	if ok {
+		stored = withStatus(stored, "declined")
+		s.conversions[key] = stored
+		if s.pairGates[s.convClick[key]+"\x00"+goal] == externalID {
+			delete(s.pairGates, s.convClick[key]+"\x00"+goal)
+		}
+	}
+	s.mu.Unlock()
+	if !ok {
+		s.writeError(w, requestID, cpa.CodeConversionNotFound,
+			fmt.Sprintf("cpatest: конверсия %s на цели %q стендом не заведена", externalID, goal))
+		return
+	}
+	s.writeData(w, requestID, stored, http.StatusOK, nil)
 }
 
 func (s *Server) acceptPayout(w http.ResponseWriter, body []byte, requestID string) {

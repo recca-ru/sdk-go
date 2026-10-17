@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
+	"strings"
 	"time"
 
 	"go.recca.ru/sdk/cpa"
+	"go.recca.ru/sdk/cpatypes"
 )
 
 // ScenarioOptions — сценарии приёмки из дополнения к Приложению № 1 договора
@@ -33,6 +36,13 @@ type ScenarioOptions struct {
 	Goal        string
 	// RevshareOfferID — сценарий 4 (и площадка сценария 2).
 	RevshareOfferID string
+	// MultiOfferID, MultiGoal и MultiPlainGoal — сценарий 6 (WV-0827): оффер,
+	// где ОДНА цель принимает несколько конверсий с одного клика (флаг цели
+	// включает оператор), а ДРУГАЯ — нет. Пара «разрешение/запрет» обязана быть
+	// на одном оффере: запрет на чужих условиях доказывал бы чужое свойство.
+	MultiOfferID   string
+	MultiGoal      string
+	MultiPlainGoal string
 	// SumRUB — сумма заказа для процентных ставок. Пусто — 10000: сумма, при
 	// которой доли договора (15 %, 5 %, 10 %) дают целые рубли.
 	SumRUB cpa.RUB
@@ -68,6 +78,7 @@ func runScenarios(ctx context.Context, t TB, c *cpa.Client, opts ConformanceOpti
 		{"2 (скаут)", s.RevshareOfferID, func() error { return scenarioScout(ctx, t, c, opts, stamp) }},
 		{"3 (целевое действие)", s.GoalOfferID, func() error { return scenarioGoal(ctx, t, c, opts, stamp) }},
 		{"4 (revshare)", s.RevshareOfferID, func() error { return scenarioRevshare(ctx, t, c, opts, stamp) }},
+		{"6 (несколько конверсий с клика)", s.MultiOfferID, func() error { return scenarioMulti(ctx, t, c, opts, stamp) }},
 	}
 	for _, sc := range all {
 		if sc.offerID == "" {
@@ -281,7 +292,10 @@ func scenarioRevshare(ctx context.Context, t TB, c *cpa.Client, opts Conformance
 	if err != nil {
 		return fmt.Errorf("оффер %s: %w", s.RevshareOfferID, err)
 	}
-	advertiserView, _, err := c.Offers.GetForAdvertiser(ctx, s.RevshareOfferID)
+	// Рекламодатель — из партнёрской проекции ТОГО ЖЕ оффера: с 02.10 дверь
+	// требует advertiser_id и на карточке (WV-0828 Д2R1-07), а приёмке
+	// достаточно оффера из опций — лишнего env не нужно.
+	advertiserView, _, err := c.Offers.GetForAdvertiser(ctx, s.RevshareOfferID, partnerView.AdvertiserID)
 	if err != nil {
 		return fmt.Errorf("оффер %s глазами рекламодателя: %w", s.RevshareOfferID, err)
 	}
@@ -305,6 +319,211 @@ func scenarioRevshare(ctx context.Context, t TB, c *cpa.Client, opts Conformance
 		sum, got.card.RevenueRUB, *advertiserView.RevenueRate.ValuePercent,
 		got.card.PayoutRUB, *partnerView.PayoutRate.ValuePercent, got.card.MarginRUB)
 	return nil
+}
+
+// ── сценарий 6: несколько конверсий с одного клика ──────────────────────────
+
+// scenarioMulti — WV-0827: пара «клик + цель» платится один раз, если у цели
+// не включено «несколько конверсий с одного клика». Флаг цель несёт в ОБЕИХ
+// проекциях оффера, и обе обязаны его донести: разойдись проекции, интегратор
+// читал бы флаг одной стороны и решал по нему, слать ли второй заказ той же
+// цели.
+func scenarioMulti(ctx context.Context, t TB, c *cpa.Client, opts ConformanceOptions, stamp string) error {
+	s := opts.Scenarios
+	if s.MultiGoal == "" || s.MultiPlainGoal == "" {
+		return errors.New("не заданы цели сценария: MultiGoal (с флагом) и MultiPlainGoal (без)")
+	}
+
+	partnerView, _, err := c.Offers.GetForPartner(ctx, s.MultiOfferID)
+	if err != nil {
+		return fmt.Errorf("оффер %s: %w", s.MultiOfferID, err)
+	}
+	advertiserView, _, err := c.Offers.GetForAdvertiser(ctx, s.MultiOfferID, partnerView.AdvertiserID)
+	if err != nil {
+		return fmt.Errorf("оффер %s глазами рекламодателя: %w", s.MultiOfferID, err)
+	}
+	multiPartner, multiAdv := false, false
+	for _, g := range partnerView.Goals {
+		if g.Code == s.MultiGoal && g.MultiplePerClick {
+			multiPartner = true
+		}
+	}
+	for _, g := range advertiserView.Goals {
+		if g.Code == s.MultiGoal && g.MultiplePerClick {
+			multiAdv = true
+		}
+	}
+	if !multiPartner || !multiAdv {
+		return fmt.Errorf("у цели %q флаг multiple_per_click не включён (партнёрская проекция %v, рекламодательская %v) — его ставит оператор сети; без флага сценарий доказывал бы отсутствие настройки, а не поведение",
+			s.MultiGoal, multiPartner, multiAdv)
+	}
+	for _, g := range partnerView.Goals {
+		if g.Code == s.MultiPlainGoal && g.MultiplePerClick {
+			return fmt.Errorf("у цели %q флаг включён — на ветку запрета нужна цель БЕЗ флага, иначе запрет был бы зелёным по чужой причине",
+				s.MultiPlainGoal)
+		}
+	}
+
+	pay, rev, err := goalRates(ctx, c, s.MultiOfferID, s.MultiGoal)
+	if err != nil {
+		return err
+	}
+	hold := goalHoldDays(partnerView, s.MultiGoal)
+	sum := s.sum()
+	goal := s.MultiGoal
+
+	partner := cpa.PartnerExternalID(opts.prefix() + "s6-webmaster")
+	if err := upsertWebmaster(ctx, t, c, "С6", partner); err != nil {
+		return err
+	}
+
+	// ── нога «разрешено»: ОДИН клик, ДВА заказа одной целью ────────────────
+	// Каждый платится СВОЕЙ конверсией — со своей выплатой и своим холдом.
+	click, err := s6Click(ctx, t, c, partner, s.MultiOfferID, opts.prefix()+"s6-click-"+stamp)
+	if err != nil {
+		return err
+	}
+	extA, extB := opts.prefix()+"s6-a-"+stamp, opts.prefix()+"s6-b-"+stamp
+
+	first, firstResp, err := c.Conversions.Create(ctx, cpa.CreateConversionParams{
+		ClickID: click, ExternalID: extA, Status: "approved", Goal: &goal, SumRUB: &sum,
+	})
+	if err != nil {
+		return fmt.Errorf("первая конверсия цели с флагом: %w", err)
+	}
+	t.Logf("  С6 · конверсия %s — request_id %s", first.ExternalID, firstResp.RequestID)
+	if firstResp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("первая конверсия ответила %d, ждали ровно 201", firstResp.StatusCode)
+	}
+	if err := checkAmounts(first, pay, rev, sum); err != nil {
+		return err
+	}
+	if err := checkHold(first, hold, opts.now()); err != nil {
+		return err
+	}
+
+	second, secondResp, err := c.Conversions.Create(ctx, cpa.CreateConversionParams{
+		ClickID: click, ExternalID: extB, Status: "approved", Goal: &goal, SumRUB: &sum,
+	})
+	if err != nil {
+		return fmt.Errorf("второй заказ %s той же цели с того же клика отбит, а флаг у цели включён: %w", extB, err)
+	}
+	t.Logf("  С6 · конверсия %s — request_id %s", second.ExternalID, secondResp.RequestID)
+	if secondResp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("вторая конверсия ответила %d, ждали ровно 201", secondResp.StatusCode)
+	}
+	if second.ExternalID != extB {
+		return fmt.Errorf("дверь вернула конверсию %s вместо %s", second.ExternalID, extB)
+	}
+	if err := checkAmounts(second, pay, rev, sum); err != nil {
+		return err
+	}
+	if err := checkHold(second, hold, opts.now()); err != nil {
+		return err
+	}
+
+	// Повтор ПЕРВОГО external_id идемпотентен: у цели с флагом «второй заказ»
+	// и «повтор первого» — разные события, и повтор не создаёт третью ногу.
+	repeat, repeatResp, err := c.Conversions.Create(ctx, cpa.CreateConversionParams{
+		ClickID: click, ExternalID: extA, Status: "approved", Goal: &goal, SumRUB: &sum,
+	})
+	if err != nil {
+		return fmt.Errorf("идемпотентный повтор первого заказа отбит: %w", err)
+	}
+	if repeat.ExternalID != first.ExternalID {
+		return fmt.Errorf("повтор вернул другую конверсию: %s вместо %s", repeat.ExternalID, first.ExternalID)
+	}
+	if repeatResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("повтор ответил %d, ждали 200 — конверсия уже была", repeatResp.StatusCode)
+	}
+
+	// Отмена одной гасит ТОЛЬКО её: вторая жива — и деньгами, и статусом.
+	cancelled, cancelResp, err := c.Conversions.Cancel(ctx, cpa.CancelConversionParams{
+		ExternalID: extA, Goal: &goal, Reason: "сценарий 6: отмена первой из двух",
+	})
+	if err != nil {
+		return fmt.Errorf("отмена первой из двух: %w", err)
+	}
+	t.Logf("  С6 · отмена %s — request_id %s", extA, cancelResp.RequestID)
+	if cancelled.Status != cpa.ConversionDeclined {
+		return fmt.Errorf("отмена оставила статус %q, ждали declined", cancelled.Status)
+	}
+	cardB, _, err := c.Conversions.Get(ctx, cpa.GetConversionParams{ExternalID: extB, Goal: &goal})
+	if err != nil {
+		return fmt.Errorf("карточка второй конверсии после отмены первой: %w", err)
+	}
+	if cardB.Status == cpa.ConversionDeclined {
+		return errors.New("отмена первой погасила и вторую — у цели с флагом каждая конверсия своя")
+	}
+	if err := checkAmounts(cardB, pay, rev, sum); err != nil {
+		return err
+	}
+
+	// ── нога «запрет»: та же пара у цели БЕЗ флага ──────────────────────────
+	plainGoal := s.MultiPlainGoal
+	plainClick, err := s6Click(ctx, t, c, partner, s.MultiOfferID, opts.prefix()+"s6-plain-click-"+stamp)
+	if err != nil {
+		return err
+	}
+	extC, extD := opts.prefix()+"s6-c-"+stamp, opts.prefix()+"s6-d-"+stamp
+
+	if _, _, err := c.Conversions.Create(ctx, cpa.CreateConversionParams{
+		ClickID: plainClick, ExternalID: extC, Status: "approved", Goal: &plainGoal, SumRUB: &sum,
+	}); err != nil {
+		return fmt.Errorf("первая конверсия цели без флага: %w", err)
+	}
+	_, _, err = c.Conversions.Create(ctx, cpa.CreateConversionParams{
+		ClickID: plainClick, ExternalID: extD, Status: "approved", Goal: &plainGoal, SumRUB: &sum,
+	})
+	if err == nil {
+		return fmt.Errorf("второй заказ %s на цели %q без флага прошёл — пара «клик + цель» платится один раз",
+			extD, plainGoal)
+	}
+	if !errors.Is(err, cpa.ErrAlreadyConverted) {
+		return fmt.Errorf("ждали ALREADY_CONVERTED, получили: %w", err)
+	}
+	var apiErr *cpa.APIError
+	if !errors.As(err, &apiErr) {
+		return fmt.Errorf("отказ не разобран как ответ двери: %w", err)
+	}
+	if apiErr.HTTPStatus != http.StatusConflict {
+		return fmt.Errorf("ALREADY_CONVERTED приехал со статусом %d, ждали 409", apiErr.HTTPStatus)
+	}
+	// Отказ называет заказ, занявший пару (WV-0827): без номера интегратор не
+	// отличил бы «мой повтор» от «пару занял другой заказ».
+	if !strings.Contains(apiErr.Message, extC) {
+		return fmt.Errorf("отказ не называет занявший пару заказ %s: %q", extC, apiErr.Message)
+	}
+
+	t.Logf("сценарий договора 6 пройден: цель %s (флаг) — %s и %s с одного клика, каждая со своей выплатой %s ₽ и холдом; повтор %s идемпотентен; после отмены %s конверсия %s жива (%s); цель %s без флага — второй заказ 409 ALREADY_CONVERTED с номером занявшего",
+		s.MultiGoal, extA, extB, first.PayoutRUB, extA, extA, extB, cardB.Status, s.MultiPlainGoal)
+	return nil
+}
+
+// s6Click — ссылка и клик с уникальным на прогон ключом. Сценарий меряет ПАРУ
+// «клик + цель», и клик обязан быть свежим: повторный ключ вернул бы клик
+// прошлого прогона с его занятыми парами. Идентификатор — именованный
+// cpatypes.ClickID на всём пути сценария: он затем и именованный, чтобы id
+// клика не путался с другими строками.
+func s6Click(ctx context.Context, t TB, c *cpa.Client, partner cpa.PartnerExternalID, offerID, clickKey string) (cpatypes.ClickID, error) {
+	link, resp, err := c.Links.Create(ctx, cpa.CreateLinkParams{PartnerExternalID: partner, OfferID: offerID})
+	if err != nil {
+		return "", fmt.Errorf("ссылка: %w", err)
+	}
+	t.Logf("  С6 · ссылка %s — request_id %s", link.Code, resp.RequestID)
+
+	click, resp, err := c.Clicks.Create(ctx, cpa.CreateClickParams{
+		PartnerExternalID: partner, OfferID: offerID, ClientClickID: clickKey, Country: "RU",
+	})
+	if err != nil {
+		return "", fmt.Errorf("переход: %w", err)
+	}
+	if click.Status == cpa.ClickTrafficback || click.ClickID == nil {
+		return "", fmt.Errorf("переход отбит (%s) — сценарий дальше не идёт",
+			valueOr(click.Reason, "click_id не выдан"))
+	}
+	t.Logf("  С6 · переход — request_id %s", resp.RequestID)
+	return *click.ClickID, nil
 }
 
 // ── чистые проверки (их доказывают юниты и мутации) ─────────────────────────
@@ -425,7 +644,7 @@ func goalRates(ctx context.Context, c *cpa.Client, offerID, goal string) (pay, r
 	if err != nil {
 		return pay, rev, fmt.Errorf("оффер %s: %w", offerID, err)
 	}
-	advertiserView, _, err := c.Offers.GetForAdvertiser(ctx, offerID)
+	advertiserView, _, err := c.Offers.GetForAdvertiser(ctx, offerID, partnerView.AdvertiserID)
 	if err != nil {
 		return pay, rev, fmt.Errorf("оффер %s глазами рекламодателя: %w", offerID, err)
 	}

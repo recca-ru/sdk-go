@@ -361,10 +361,19 @@ func TestValidationBeforeNetwork(t *testing.T) {
 		},
 		{
 			// ⚠ Дверь без advertiser_id при view=advertiser отвечает 400 —
-			// значит отказать обязан клиент, и до сети.
+			// значит отказать обязан клиент, и до сети. С 02.10 это касается и
+			// КАРТОЧКИ оффера, не только каталога (Recca WV-0828 Д2R1-07).
 			name: "проекция рекламодателя: рекламодатель не назван",
 			invoke: func(ctx context.Context, c *cpa.Client) error {
 				_, _, err := c.Offers.ListForAdvertiser(ctx, "", cpa.ListOffersParams{})
+				return err
+			},
+			wantField: "advertiser_id",
+		},
+		{
+			name: "карточка в проекции рекламодателя: рекламодатель не назван",
+			invoke: func(ctx context.Context, c *cpa.Client) error {
+				_, _, err := c.Offers.GetForAdvertiser(ctx, "off_1", "")
 				return err
 			},
 			wantField: "advertiser_id",

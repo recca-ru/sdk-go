@@ -86,7 +86,7 @@ const failEnvelope = `{"success":false,"error":{"code":"INTERNAL_ERROR","message
 // стенд не отдаёт вовсе — например отбитый переход.
 
 const (
-	selfData = `{"contract_version":"2026-09-24","environment":"sandbox","network_id":"net_1",
+	selfData = `{"contract_version":"2026-10-02","environment":"sandbox","network_id":"net_1",
 		"scopes":["cpa:self:read","cpa:partners:write"],"agent_base":"margin",
 		"agent_hold":{"mode":"own_days","days":14},"min_payout_rub":1000,
 		"rate_limit_per_min":3000,"webhook_configured":false}`
@@ -279,11 +279,13 @@ func methodCases(t *testing.T) []methodCase {
 		{
 			covers: "Offers.GetForAdvertiser", data: offerAdvertiserData,
 			invoke: func(ctx context.Context, c *cpa.Client) error {
-				_, _, err := c.Offers.GetForAdvertiser(ctx, "off_1")
+				_, _, err := c.Offers.GetForAdvertiser(ctx, "off_1", "adv_1")
 				return err
 			},
 			wantMethod: http.MethodGet, wantPath: "/federation/v1/cpa/offers/off_1",
-			wantQuery:  []string{"view=advertiser"},
+			// advertiser_id обязан уехать в запрос: без него дверь с 02.10
+			// отвечает 400 — v0.2.1 на этом и сломалась (приёмка 03.10).
+			wantQuery:  []string{"view=advertiser", "advertiser_id=adv_1"},
 			idempotent: true,
 		},
 		{

@@ -160,7 +160,60 @@ func TestScenariosWithoutOffersAreNamedSkipped(t *testing.T) {
 			skipped++
 		}
 	}
-	if skipped != 4 {
-		t.Errorf("пропущенными названо %d сценариев из 4:\n  %s", skipped, strings.Join(rec.logs, "\n  "))
+	if skipped != 5 {
+		t.Errorf("пропущенными названо %d сценариев из 5:\n  %s", skipped, strings.Join(rec.logs, "\n  "))
 	}
+}
+
+// ⚠⚠ Сценарий 6 зелен на стенде с парой целей «флаг/без флага» — и краснеет,
+// когда стенд перестаёт блюсти пару «клик + цель». Вторая половина — та же
+// дисциплина, что у повтора с 201: без неё сценарий проверял бы сериализацию,
+// а не поведение гейта.
+func TestScenario6GreenOnStandAndRedOnPairlessGate(t *testing.T) {
+	options := func() ConformanceOptions {
+		return ConformanceOptions{Scenarios: &ScenarioOptions{
+			MultiOfferID: "off_1", MultiGoal: "repeat", MultiPlainGoal: "1",
+		}}
+	}
+
+	t.Run("зелёный против стенда", func(t *testing.T) {
+		server := NewServer(t)
+		rec := &recorder{}
+		Conformance(rec, server.Client(t), options())
+
+		for _, message := range rec.errors {
+			if strings.Contains(message, "сценарий договора 6") {
+				t.Errorf("сценарий 6 покраснел на исправном стенде: %s", message)
+			}
+		}
+		passed := false
+		for _, l := range rec.logs {
+			if strings.Contains(l, "сценарий договора 6 пройден") {
+				passed = true
+			}
+		}
+		if !passed {
+			t.Errorf("сценарий 6 не прошёл и не назвался в журнале:\n  ошибки: %s\n  журнал: %s",
+				strings.Join(rec.errors, "\n  "), strings.Join(rec.logs, "\n  "))
+		}
+	})
+
+	t.Run("красный, когда стенд не блюдет пару", func(t *testing.T) {
+		server := NewServer(t)
+		server.ignorePairGate = true
+		rec := &recorder{}
+		Conformance(rec, server.Client(t), options())
+
+		found := false
+		for _, message := range rec.errors {
+			if strings.Contains(message, "сценарий договора 6") &&
+				strings.Contains(message, "платится один раз") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("сценарий 6 не заметил, что стенд пропустил занятую пару:\n  %s",
+				strings.Join(rec.errors, "\n  "))
+		}
+	})
 }

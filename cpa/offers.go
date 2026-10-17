@@ -97,16 +97,34 @@ func (s *OffersService) GetForPartner(ctx context.Context, offerID string) (*Off
 }
 
 // GetForAdvertiser читает оффер в проекции рекламодателя:
-// GET /cpa/offers/{id}?view=advertiser.
-func (s *OffersService) GetForAdvertiser(ctx context.Context, offerID string) (*OfferAdvertiserView, *Response, error) {
-	if offerID == "" {
+// GET /cpa/offers/{id}?view=advertiser&advertiser_id=….
+//
+// ⚠⚠ С 02.10.2026 (Recca WV-0828 Д2R1-07) дверь требует advertiser_id и на
+// КАРТОЧКЕ, как на каталоге, — и он обязан называть рекламодателя ЭТОГО
+// оффера: чужой идентификатор открывал бы revenue_rate чужой карточки
+// перебором. До этого метод жил без аргумента, и сигнатура сломана
+// НАМЕРЕННО: обязательность, спрятанная в опциях, забывается; аргумент — нет.
+// Неизвестный или чужой рекламодатель — 404 ADVERTISER_NOT_FOUND; взять
+// идентификатор можно из партнёрской проекции того же оффера (поле
+// AdvertiserID у GetForPartner/ListForPartner).
+func (s *OffersService) GetForAdvertiser(
+	ctx context.Context,
+	offerID string,
+	advertiserID string,
+) (*OfferAdvertiserView, *Response, error) {
+	switch {
+	case offerID == "":
 		return nil, nil, validationError("offer_id", "обязательное поле")
+	case advertiserID == "":
+		return nil, nil, validationError("advertiser_id",
+			"обязательный аргумент: проекция рекламодателя без него дверью не отдаётся (Recca, октябрь 2026)")
 	}
 
+	query := url.Values{"view": {"advertiser"}, "advertiser_id": {advertiserID}}
 	return do[OfferAdvertiserView](ctx, (*service)(s), request{
 		Method:  http.MethodGet,
 		Path:    offersPath + "/" + pathSegment(offerID),
-		Query:   url.Values{"view": {"advertiser"}},
+		Query:   query,
 		Subject: "оффер рекламодателя",
 	})
 }

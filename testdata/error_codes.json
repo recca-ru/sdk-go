@@ -1,5 +1,5 @@
 {
-  "contract_version": "2026-09-24",
+  "contract_version": "2026-10-02",
   "generated_from": "docs/federation/cpa-api.md — раздел 12, блок BEGIN GENERATED: error-table",
   "note": "Коды машинной двери /federation/v1/cpa/*. Собираются в Recca из CPA_FEDERATION_ERROR_DOCS; здесь — копия, которую переносит scripts/sdk-go/sync-contract.mjs. Кода MALFORMED_RESPONSE тут нет и быть не может: его ставит сам клиент, когда дверь ответила 2xx с success:false.",
   "codes": [
@@ -40,6 +40,10 @@
       "http": 400
     },
     {
+      "code": "OCCURRED_AT_OUT_OF_WINDOW",
+      "http": 400
+    },
+    {
       "code": "PARTNER_NOT_FOUND",
       "http": 404
     },
@@ -66,6 +70,10 @@
     {
       "code": "UNKNOWN_GOAL",
       "http": 400
+    },
+    {
+      "code": "GOAL_DISABLED",
+      "http": 409
     },
     {
       "code": "WINDOW_EXPIRED",

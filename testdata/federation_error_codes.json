@@ -71,6 +71,10 @@
       "http": 401
     },
     {
+      "code": "ACCOUNT_SUSPENDED",
+      "http": 403
+    },
+    {
       "code": "NOT_FOUND",
       "http": 404
     },

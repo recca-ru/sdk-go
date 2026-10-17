@@ -22,6 +22,10 @@ import (
 //	RECCA_CPA_SANDBOX_BRAND_OFFER, RECCA_CPA_SANDBOX_BRAND_GOAL — сценарий 1 договора
 //	RECCA_CPA_SANDBOX_GOAL_OFFER, RECCA_CPA_SANDBOX_GOAL         — сценарий 3
 //	RECCA_CPA_SANDBOX_REVSHARE_OFFER                              — сценарии 2 и 4
+//	RECCA_CPA_SANDBOX_MULTI_OFFER, RECCA_CPA_SANDBOX_MULTI_GOAL,
+//	RECCA_CPA_SANDBOX_MULTI_PLAIN_GOAL                            — сценарий 6:
+//	  оффер, где MULTI_GOAL — цель с включённым «несколько конверсий с одного
+//	  клика» (флаг ставит оператор), MULTI_PLAIN_GOAL — цель без него
 //	RECCA_CPA_SANDBOX_SKIP_PAYOUTS — "1", если на площадке нельзя создавать заявки
 //	                                 вовсе (пустой баланс цепочку не роняет)
 //
@@ -51,7 +55,10 @@ func TestConformanceAgainstSandbox(t *testing.T) {
 		GoalOfferID:     os.Getenv("RECCA_CPA_SANDBOX_GOAL_OFFER"),
 		Goal:            os.Getenv("RECCA_CPA_SANDBOX_GOAL"),
 		RevshareOfferID: os.Getenv("RECCA_CPA_SANDBOX_REVSHARE_OFFER"),
-	}); s.BrandOfferID != "" || s.GoalOfferID != "" || s.RevshareOfferID != "" {
+		MultiOfferID:    os.Getenv("RECCA_CPA_SANDBOX_MULTI_OFFER"),
+		MultiGoal:       os.Getenv("RECCA_CPA_SANDBOX_MULTI_GOAL"),
+		MultiPlainGoal:  os.Getenv("RECCA_CPA_SANDBOX_MULTI_PLAIN_GOAL"),
+	}); s.BrandOfferID != "" || s.GoalOfferID != "" || s.RevshareOfferID != "" || s.MultiOfferID != "" {
 		opts.Scenarios = &s
 	}
 	cpatest.Conformance(t, client, opts)

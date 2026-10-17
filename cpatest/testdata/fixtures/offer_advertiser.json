@@ -13,6 +13,19 @@
       "code": "1",
       "name": "Оплата",
       "is_milestone": false,
+      "multiple_per_click": false,
+      "revenue_rate": {
+        "kind": "fixed",
+        "value_rub": 800,
+        "value_percent": null
+      },
+      "hold_days": 30
+    },
+    {
+      "code": "repeat",
+      "name": "Повторная оплата",
+      "is_milestone": false,
+      "multiple_per_click": true,
       "revenue_rate": {
         "kind": "fixed",
         "value_rub": 800,
